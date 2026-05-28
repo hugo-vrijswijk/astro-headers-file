@@ -3,6 +3,7 @@
   "extends": ["config:recommended", "config:js-lib", "group:linters"],
   "schedule": ["every weekend"],
   "timezone": "Europe/Amsterdam",
+  "minimumReleaseAge": "1 day",
   "lockFileMaintenance": {
     "enabled": true
   },

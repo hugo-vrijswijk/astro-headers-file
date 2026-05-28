@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/hugo-vrijswijk/astro-headers-file",
   "author": {
     "name": "hugo_vrijswijk",
     "url": "https://github.com/hugo-vrijswijk/"
@@ -30,8 +31,12 @@
     "headers",
     "redirects",
     "cloudflare",
+    "cloudflare-pages",
     "netlify",
-    "vercel"
+    "vercel",
+    "tooling",
+    "utils",
+    "utility"
   ],
   "scripts": {
     "build": "tsc",

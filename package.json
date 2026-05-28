@@ -1,7 +1,7 @@
 {
   "name": "astro-headers-file",
   "description": "Astro integration that uses existing configuration to write a static headers file for platforms like Cloudflare Pages, Netlify and Vercel.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/hugo-vrijswijk/astro-headers-file",

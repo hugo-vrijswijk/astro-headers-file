@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/hugo-vrijswijk/astro-headers-file/compare/v1.0.1...v2.0.0) (2026-06-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* move path-based headers to `headers` integration option
+
+### Features
+
+* move path-based headers to `headers` integration option ([cb4e88b](https://github.com/hugo-vrijswijk/astro-headers-file/commit/cb4e88be075930cb2ee32121d0da903b06cc1337))
+
 ## [1.0.1](https://github.com/hugo-vrijswijk/astro-headers-file/compare/v1.0.0...v1.0.1) (2026-05-28)
 
 

@@ -40,12 +40,14 @@
   ],
   "scripts": {
     "build": "tsc",
-    "check": "astro check && tsc --noEmit"
+    "check": "astro check && tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.9",
     "@types/node": "25.9.4",
-    "astro": "6.4.8"
+    "astro": "6.4.8",
+    "vitest": "4.1.9"
   },
   "peerDependencies": {
     "astro": ">=4.0.0"

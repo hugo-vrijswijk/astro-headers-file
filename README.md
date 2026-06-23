@@ -25,31 +25,40 @@ import { defineConfig } from 'astro/config';
 import headersFile from 'astro-headers-file';
 
 export default defineConfig({
-  integrations: [headersFile()],
+  integrations: [
+    headersFile({
+      headers: {
+        // Specify per path
+        '/*': [
+          'X-Frame-Options: DENY',
+          'X-Content-Type-Options: nosniff',
+          'Cross-Origin-Opener-Policy: same-origin',
+          'Cross-Origin-Resource-Policy: same-origin',
+          'Referrer-Policy: same-origin',
+          'Cache-Control: public, max-age=60, must-revalidate',
+        ],
+        '/_astro/*': ['Cache-Control: public, max-age=31536000, immutable'],
+        '/': ['Cache-Control: public, max-age=0, must-revalidate'],
+      },
+    }),
+  ],
+  server: {
+    // Or for all paths (uses `/*`)
+    headers: {
+      'X-Custom-Header': 'My custom value',
+    },
+  },
   security: {
     // Add content-security-policy directives with hashes
     csp: true,
   },
-  server: {
-    headers: {
-      // Specify per path
-      '/*': [
-        'X-Frame-Options: DENY',
-        'X-Content-Type-Options: nosniff',
-        'Cross-Origin-Opener-Policy: same-origin',
-        'Cross-Origin-Resource-Policy: same-origin',
-        'Referrer-Policy: same-origin',
-        'Cache-Control: public, max-age=60, must-revalidate',
-      ],
-      '/_astro/*': ['Cache-Control: public, max-age=31536000, immutable'],
-      '/': ['Cache-Control: public, max-age=0, must-revalidate'],
-
-      // Or for all paths (uses `/*`)
-      'X-Custom-Header': 'My custom value',
-    },
-  },
 });
 ```
+
+> [!IMPORTANT]
+> Path-based headers go in the integration's `headers` option, **not** in Astro's `server.headers`.
+> Set global headers (`/*`) in `server.headers` (e.g.
+> `{ 'X-Custom-Header': 'My custom value' }`).
 
 After running `astro build`, a headers file will be generated in the output directory with the configured headers and CSP directives:
 
@@ -71,22 +80,37 @@ After running `astro build`, a headers file will be generated in the output dire
   Cache-Control: public, max-age=31536000, immutable
 ```
 
-
 ## Options
 
 The integration accepts the following options:
 
-| Option             | Type                 | Default                                               | Description                                                                                                                                                      |
-| ------------------ | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `filename`         | string               | `_headers`                                            | Filename for the generated headers file. Relative to the output directory.                                                                                       |
-| `blocklistHeaders` | (string \| RegExp)[] | `['content-length', 'content-type', 'last-modified']` | Blocklist of headers to exclude from the generated headers file. Can be either a string (exact match) or a RegExp (pattern match). Matching is case-insensitive. |
-| `blocklistPaths`   | (string \| RegExp)[] | `[]`                                                  | Blocklist of paths to exclude from the generated headers file. Can be either a string (exact match) or a RegExp (pattern match).                                 |
+| Option             | Type                                         | Default                                               | Description                                                                                                                                                      |
+| ------------------ | -------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `headers`          | Record<string, string \| string[] \| object> | `{}`                                                  | Path-based headers to include. Keys are path patterns (e.g. `'/*'`, `'/_astro/*'`, `'/'`); values are the headers for that path (see formats below).             |
+| `filename`         | string                                       | `_headers`                                            | Filename for the generated headers file. Relative to the output directory.                                                                                       |
+| `blocklistHeaders` | (string \| RegExp)[]                         | `['content-length', 'content-type', 'last-modified']` | Blocklist of headers to exclude from the generated headers file. Can be either a string (exact match) or a RegExp (pattern match). Matching is case-insensitive. |
+| `blocklistPaths`   | (string \| RegExp)[]                         | `[]`                                                  | Blocklist of paths to exclude from the generated headers file. Can be either a string (exact match) or a RegExp (pattern match).                                 |
+
+Each value in `headers` accepts three formats:
+
+```ts
+headersFile({
+  headers: {
+    // An array of 'Name: Value' strings
+    '/*': ['X-Frame-Options: DENY', 'X-Content-Type-Options: nosniff'],
+    // A single 'Name: Value' string
+    '/': 'Cache-Control: public, max-age=0, must-revalidate',
+    // An object of name/value pairs
+    '/_astro/*': { 'Cache-Control': 'public, max-age=31536000, immutable' },
+  },
+});
+```
 
 ## Does this work with...?
 
 - Cloudflare/Vercel/Netlify? Yes! And any other platform that supports a static headers file in the same format
 - Astro [`security.csp`](https://docs.astro.build/en/reference/configuration-reference/#securitycsp)? Yes! The integration adds all configured CSP directives to the generated headers file.
-- Custom headers in `astro.config.mjs`? Yes! Any custom headers you configure in `astro.config.mjs` will also be included in the generated headers file.
+- Custom server headers? Yes! Configure path-based headers in the integration's `headers` option, and any global headers in Astro's `server.headers` are picked up too.
 - `@astrojs/node` adapter? No, the adapter will handle headers at runtime by itself.
 - `@astrojs/cloudflare` adapter? Untested.
 

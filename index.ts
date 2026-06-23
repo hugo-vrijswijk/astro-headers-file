@@ -4,7 +4,16 @@ import type {
   AstroIntegrationLogger,
   RouteToHeaders,
 } from 'astro';
+import type { OutgoingHttpHeaders } from 'node:http';
 import { writeFile } from 'node:fs/promises';
+
+/**
+ * Headers for a single path pattern. Can be:
+ * - a single `'Name: Value'` string,
+ * - an array of `'Name: Value'` strings, or
+ * - an object of header name/value pairs.
+ */
+export type HeaderValue = string | string[] | Record<string, string>;
 
 export type HeadersFileOptions = {
   /**
@@ -29,6 +38,15 @@ export type HeadersFileOptions = {
    * @default []
    */
   blocklistPaths: (string | RegExp)[];
+
+  /**
+   * Path-based headers to include in the generated headers file. Keys are path patterns (e.g. `'/*'`, `'/_astro/*'`, `'/'`) and values are the headers for that path.
+   *
+   * Use this instead of Astro's `server.headers` for path-specific headers
+   *
+   * @default {}
+   */
+  headers: Record<string, HeaderValue>;
 };
 
 export default function astroHeadersFile(
@@ -53,6 +71,7 @@ export default function astroHeadersFile(
           ],
           blocklistPaths: [],
           filename: '_headers',
+          headers: {},
           ...options,
         };
 
@@ -99,50 +118,13 @@ export default function astroHeadersFile(
           return;
         }
 
-        const configuredHeaders = extractConfiguredHeaders(_config, logger);
-        const routeHeaders = extractRouteHeaders(_routeToHeaders);
+        const pathedHeaders = [
+          ...extractRouteHeaders(_routeToHeaders),
+          ...parseOptionHeaders(_options.headers, logger),
+          ...parseServerHeaders(_config.server.headers),
+        ];
 
-        const combined = Object.entries(
-          Object.groupBy(
-            [...routeHeaders, ...configuredHeaders],
-            ({ pathname }) => pathname,
-          ),
-        )
-          // Filter out blocklistPaths
-          .filter(
-            ([pathname]) =>
-              !_options!.blocklistPaths.some((pattern) =>
-                typeof pattern === 'string'
-                  ? pattern === pathname
-                  : pattern.test(pathname),
-              ),
-          )
-          // Filter out blocklistHeaders
-          .map(
-            ([pathname, headers]) =>
-              [
-                pathname.trim(),
-                headers
-                  ?.flatMap(({ headers }) => headers)
-                  .filter(
-                    ({ key }) =>
-                      !_options?.blocklistHeaders.some((pattern) =>
-                        typeof pattern === 'string'
-                          ? pattern.toLowerCase() === key.toLowerCase()
-                          : pattern.test(key),
-                      ),
-                  ),
-              ] as const,
-          )
-          .filter(([pathname, headers]) => pathname && headers?.length);
-
-        // Create text content for output file
-        const text = combined
-          .map(
-            ([pathname, headers]) =>
-              `${pathname}\n${headers!.map(({ key, value }) => `  ${key}: ${value}`).join('\n')}`,
-          )
-          .join('\n\n');
+        const text = buildHeadersText(pathedHeaders, _options);
 
         if (text.trim().length === 0) {
           logger.info('No headers to write. Skipping writing headers file.');
@@ -158,13 +140,51 @@ export default function astroHeadersFile(
   };
 }
 
-type PathedHeaders = {
+export type PathedHeaders = {
   pathname: string;
   headers: {
     key: string;
     value: string;
   }[];
 };
+
+/**
+ * Split a single `'Name: Value'` string, preserving colons in the value.
+ * Returns `undefined` for a line without a colon separator.
+ */
+function splitHeaderLine(
+  line: string,
+): { key: string; value: string } | undefined {
+  const separator = line.indexOf(':');
+  if (separator === -1) {
+    return undefined;
+  }
+  return {
+    key: line.slice(0, separator).trim(),
+    value: line.slice(separator + 1).trim(),
+  };
+}
+
+/**
+ * Parse `'Name: Value'` lines, warning on and skipping any line that lacks a
+ * colon separator rather than emitting a malformed header.
+ */
+function parseHeaderLines(
+  lines: string[],
+  pathname: string,
+  logger: Pick<AstroIntegrationLogger, 'warn'>,
+): { key: string; value: string }[] {
+  return lines.flatMap((line) => {
+    const header = splitHeaderLine(line);
+    if (!header) {
+      logger.warn(
+        `Ignoring malformed header "${line}" for pattern "${pathname}". Expected a "Name: Value" string.`,
+      );
+      return [];
+    }
+    return [header];
+  });
+}
 
 function extractRouteHeaders(_routeToHeaders: RouteToHeaders): PathedHeaders[] {
   return Array.from(_routeToHeaders.entries()).map(
@@ -178,47 +198,108 @@ function extractRouteHeaders(_routeToHeaders: RouteToHeaders): PathedHeaders[] {
   );
 }
 
-function extractConfiguredHeaders(
-  _config: AstroConfig,
-  logger: AstroIntegrationLogger,
+/**
+ * Parse the path-keyed `headers` integration option into per-path headers. Keys
+ * are path patterns; values are a single `'Name: Value'` string, an array of
+ * such strings, or an object of name/value pairs.
+ */
+export function parseOptionHeaders(
+  headers: Record<string, HeaderValue>,
+  logger: Pick<AstroIntegrationLogger, 'warn'>,
 ): PathedHeaders[] {
-  return _config.server.headers
-    ? Object.entries(_config.server.headers).flatMap(([pattern, headers]) => {
-        // { 'X-Frame-Options': 'DENY' }
-        if (typeof headers === 'string') {
-          return {
-            pathname: '/*',
-            headers: [{ key: pattern, value: headers }],
-          };
-          // { '/*': ['X-Frame-Options: DENY', 'X-Content-Type-Options: nosniff']}
-        } else if (
-          Array.isArray(headers) &&
-          headers.every((h) => typeof h === 'string')
-        ) {
-          return {
-            pathname: pattern,
-            headers: headers.map((h) => ({
-              key: h.split(':')[0].trim(),
-              value: h.split(':')[1].trim(),
-            })),
-          };
-        }
+  return Object.entries(headers).map(([pathname, value]) => {
+    // '/': 'Cache-Control: public, max-age=0'
+    if (typeof value === 'string') {
+      return { pathname, headers: parseHeaderLines([value], pathname, logger) };
+    }
 
-        // { '/*': { 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff' } }
-        else if (typeof headers === 'object' && headers !== null) {
-          return {
-            pathname: pattern,
-            headers: Object.entries(headers!).map(([key, value]) => ({
-              key: key.toLowerCase(),
-              value,
-            })),
-          };
-        } else {
-          logger.warn(
-            `Unsupported header format for pattern "${pattern}". Skipping these headers. Expected a string, an array of strings, or an object.`,
-          );
-          return { pathname: pattern, headers: [] };
-        }
-      })
-    : [];
+    // '/*': ['X-Frame-Options: DENY', 'X-Content-Type-Options: nosniff']
+    if (Array.isArray(value)) {
+      return { pathname, headers: parseHeaderLines(value, pathname, logger) };
+    }
+
+    // '/*': { 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff' }
+    if (typeof value === 'object' && value !== null) {
+      return {
+        pathname,
+        headers: Object.entries(value).map(([key, v]) => ({
+          key: key.trim(),
+          value: v,
+        })),
+      };
+    }
+
+    logger.warn(
+      `Unsupported header format for pattern "${pathname}". Skipping these headers. Expected a string, an array of strings, or an object.`,
+    );
+    return { pathname, headers: [] };
+  });
+}
+
+/**
+ * Parse Astro's `server.headers` (a flat map of HTTP header names to values
+ * applied to every response) into headers under the `/*` path. Array values
+ * become one header line each; numeric values are stringified.
+ */
+export function parseServerHeaders(
+  serverHeaders: OutgoingHttpHeaders | undefined,
+): PathedHeaders[] {
+  if (!serverHeaders) {
+    return [];
+  }
+
+  const headers = Object.entries(serverHeaders).flatMap(([key, value]) => {
+    if (value === undefined) {
+      return [];
+    }
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((v) => ({ key, value: String(v) }));
+  });
+
+  return headers.length > 0 ? [{ pathname: '/*', headers }] : [];
+}
+
+/**
+ * Combine per-path headers into the `_headers` file text, grouping by path and
+ * applying the configured path and header blocklists.
+ */
+export function buildHeadersText(
+  pathedHeaders: PathedHeaders[],
+  options: Pick<HeadersFileOptions, 'blocklistHeaders' | 'blocklistPaths'>,
+): string {
+  return (
+    Object.entries(Object.groupBy(pathedHeaders, ({ pathname }) => pathname))
+      // Filter out blocklistPaths
+      .filter(
+        ([pathname]) =>
+          !options.blocklistPaths.some((pattern) =>
+            typeof pattern === 'string'
+              ? pattern === pathname
+              : pattern.test(pathname),
+          ),
+      )
+      // Filter out blocklistHeaders
+      .map(
+        ([pathname, headers]) =>
+          [
+            pathname.trim(),
+            headers
+              ?.flatMap(({ headers }) => headers)
+              .filter(
+                ({ key }) =>
+                  !options.blocklistHeaders.some((pattern) =>
+                    typeof pattern === 'string'
+                      ? pattern.toLowerCase() === key.toLowerCase()
+                      : pattern.test(key),
+                  ),
+              ),
+          ] as const,
+      )
+      .filter(([pathname, headers]) => pathname && headers?.length)
+      .map(
+        ([pathname, headers]) =>
+          `${pathname}\n${headers!.map(({ key, value }) => `  ${key}: ${value}`).join('\n')}`,
+      )
+      .join('\n\n')
+  );
 }

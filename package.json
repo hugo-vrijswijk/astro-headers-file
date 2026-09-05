@@ -13,7 +13,7 @@
     "type": "git",
     "url": "git+https://github.com/hugo-vrijswijk/astro-headers-file.git"
   },
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@12.3.4",
   "exports": {
     ".": "./index.ts"
   },

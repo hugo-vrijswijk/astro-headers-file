@@ -46,7 +46,7 @@
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "@types/node": "25.9.6",
-    "astro": "7.3.1",
+    "astro": "7.3.2",
     "vitest": "5.0.0"
   },
   "peerDependencies": {

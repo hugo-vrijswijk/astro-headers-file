@@ -47,7 +47,7 @@
     "@astrojs/check": "0.9.10",
     "@types/node": "25.9.7",
     "astro": "7.3.3",
-    "vitest": "5.0.0"
+    "vitest": "5.0.1"
   },
   "peerDependencies": {
     "astro": ">=4.0.0"
